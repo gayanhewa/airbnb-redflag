@@ -12,14 +12,18 @@ on-device** using Chrome's built-in Gemini Nano via the Prompt API.
 
 ## How it looks
 
+![Trust score badge embedded on an Airbnb listing](docs/badge-on-listing.jpg)
+
 When you open a listing, a small pill appears top-right:
 
 ```
 🟢 85 · 3 flags
 ```
 
-Click it → side panel opens with category scores, flagged review quotes, and
-pattern warnings (templated reviews, repeated phrasing, etc.).
+Bands: 🟢 75+ (probably fine) · 🟡 55–74 (read flags carefully) · 🔴 <55 (take seriously).
+
+Click the pill → side panel opens with category scores, flagged review
+quotes, and pattern warnings (templated reviews, repeated phrasing, etc.).
 
 ## Architecture
 
