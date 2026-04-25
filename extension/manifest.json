@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "Airbnb Red-Flag Detector",
+  "version": "0.2.0",
+  "description": "Auto-analyze Airbnb listings on-device. Click the badge for cleanliness, safety, accuracy, host, and hidden-fee details.",
+  "permissions": ["sidePanel", "storage", "offscreen", "tabs"],
+  "host_permissions": [
+    "https://www.airbnb.com/*",
+    "https://*.airbnb.com/*",
+    "https://*.airbnb.com.au/*",
+    "https://*.airbnb.co.uk/*",
+    "https://*.airbnb.ca/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "action": {
+    "default_title": "Airbnb Red-Flag Detector"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.airbnb.com/rooms/*",
+        "https://*.airbnb.com.au/rooms/*",
+        "https://*.airbnb.co.uk/rooms/*",
+        "https://*.airbnb.ca/rooms/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["sidepanel.html", "offscreen.html"],
+      "matches": [
+        "https://*.airbnb.com/*",
+        "https://*.airbnb.com.au/*",
+        "https://*.airbnb.co.uk/*",
+        "https://*.airbnb.ca/*"
+      ]
+    }
+  ]
+}

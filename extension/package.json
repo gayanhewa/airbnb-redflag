@@ -1,0 +1,16 @@
+{
+  "name": "airbnb-redflag-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun run scripts/build.ts",
+    "dev": "bun run scripts/build.ts --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/chrome": "^0.0.270",
+    "typescript": "^5.5.0"
+  }
+}
