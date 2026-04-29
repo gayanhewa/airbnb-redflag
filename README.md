@@ -125,11 +125,10 @@ Then in Chrome: see `RUNBOOK.md` for the load-unpacked walkthrough.
 
 - **Persisted-query hash and API key are sniffed at runtime** from the
   Airbnb page bundle (`api_config` JSON + `StaysPdpReviewsQuery`
-  registration block). Hardcoded values in `airbnb-api.ts` exist only as a
-  fallback when the sniff returns nothing. On hash rotation (400
-  `error_type: "persisted_query_not_found"`), the extension invalidates
-  its cache, re-sniffs, and retries once before falling back to DOM
-  scraping.
+  registration block). No hardcoded fallback — if sniff fails, the
+  extension surfaces a clear error so bugs are loud, not silent. On hash
+  rotation (400 `error_type: "persisted_query_not_found"`), the extension
+  invalidates its cache, re-sniffs, and retries once.
 - **DOM fallback is heuristic** — works on the current Airbnb markup but
   will need iteration when they ship UI changes.
 - **Nano is a small model** (~3B params). It's reliable for extraction but

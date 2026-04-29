@@ -3,27 +3,24 @@
 // reviews. We run it from the user's authenticated browser context
 // (credentials: "include") so it inherits their session cookies.
 //
-// Credential strategy (Option A):
+// Credential strategy:
 //   1. Sniff the API key + persisted-query hash from the live page bundle
 //      (api_config JSON + StaysPdpReviewsQuery registration block).
 //   2. Cache the result in module scope so we don't re-walk inline scripts
 //      on every page (it's reset when the content script restarts on full
 //      page load, which is exactly when the bundle could have changed).
-//   3. Fall back to hardcoded defaults if sniff returns nothing — they're a
-//      safety net, not the primary path.
+//   3. If sniff returns nothing, throw CredentialsUnavailable. The caller
+//      (content.ts) catches this and falls back to DOM scraping. There are
+//      no hardcoded defaults — we don't want to silently serve stale
+//      results when Airbnb's bundle structure changes.
 //   4. On 400 persisted_query_not_found, invalidate the cache, re-sniff,
 //      and retry once. Self-heals when Airbnb rotates the hash.
 
 import type { Review } from "./types.js";
 
-// Last verified April 2026. These exist as a fallback when sniffing fails;
-// they will go stale eventually, hence the runtime sniff above.
-const FALLBACK_API_KEY = "d306zoyjsyarp7ifhu67rjxn52tv0t20";
-const FALLBACK_REVIEWS_QUERY_HASH =
-  "2ed951bfedf71b87d9d30e24a419e15517af9fbed7ac560a8d1cc7feadfa22e6";
 const PAGE_SIZE = 24;
 
-type Credentials = { apiKey: string; hash: string; source: "sniff" | "fallback" };
+type Credentials = { apiKey: string; hash: string };
 
 // Module-scoped cache. Lifetime = content-script lifetime (resets on full
 // page reload, which is when the bundle could have changed anyway).
@@ -60,6 +57,13 @@ export class PersistedQueryRotated extends Error {
   constructor() {
     super("Airbnb persisted-query hash has rotated.");
     this.name = "PersistedQueryRotated";
+  }
+}
+
+export class CredentialsUnavailable extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CredentialsUnavailable";
   }
 }
 
@@ -117,23 +121,17 @@ function getCredentials(forceFresh = false): Credentials {
   if (!forceFresh && cachedCreds) return cachedCreds;
 
   const sniffed = sniffFromPage();
-  const apiKey = sniffed.apiKey ?? FALLBACK_API_KEY;
-  const hash = sniffed.hash ?? FALLBACK_REVIEWS_QUERY_HASH;
-  const fullySniffed = !!(sniffed.apiKey && sniffed.hash);
-
-  const creds: Credentials = {
-    apiKey,
-    hash,
-    source: fullySniffed ? "sniff" : "fallback",
-  };
-
-  // Only cache fully-sniffed creds. If we used the fallback for either
-  // value, don't pin it — we want the next call to try sniffing again in
-  // case the page bundle finished loading.
-  if (fullySniffed) {
-    cachedCreds = creds;
+  if (!sniffed.apiKey || !sniffed.hash) {
+    const missing: string[] = [];
+    if (!sniffed.apiKey) missing.push("API key");
+    if (!sniffed.hash) missing.push("persisted-query hash");
+    throw new CredentialsUnavailable(
+      `Couldn't read ${missing.join(" and ")} from the Airbnb page bundle.`,
+    );
   }
 
+  const creds: Credentials = { apiKey: sniffed.apiKey, hash: sniffed.hash };
+  cachedCreds = creds;
   return creds;
 }
 
@@ -280,15 +278,20 @@ export async function fetchAllReviews(opts: {
     } catch (e) {
       if (e instanceof PersistedQueryRotated && !retriedAfterRotation) {
         // Hash rotated. Drop the cache, re-sniff, and try this same offset
-        // again. We only retry once — if the new creds don't work either,
-        // we surface the error so the caller can fall back to DOM scraping.
+        // again. We only retry once — if the new creds match the old, the
+        // re-sniff didn't help and we surface the error so the caller
+        // (content.ts) falls back to DOM scraping.
         retriedAfterRotation = true;
+        const oldHash = creds.hash;
         invalidateCachedCredentials();
-        creds = getCredentials(/* forceFresh */ true);
-        // If the re-sniff didn't actually find anything new, don't loop
-        // retrying with the same fallback values.
-        if (creds.source !== "sniff") throw e;
-        offset -= PAGE_SIZE; // retry the same offset
+        try {
+          creds = getCredentials(/* forceFresh */ true);
+        } catch {
+          // CredentialsUnavailable — surface the original rotation error.
+          throw e;
+        }
+        if (creds.hash === oldHash) throw e;
+        offset -= PAGE_SIZE; // retry the same offset with fresh creds
         continue;
       }
       throw e;

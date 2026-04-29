@@ -195,35 +195,42 @@ The extension is supposed to handle this automatically:
 2. The extension drops its cached credentials, re-sniffs the page bundle
    for the new hash + key, and retries the request once
 3. If the new credentials work → silent recovery, user sees nothing
-4. If the new credentials still fail → falls back to DOM scraping
+4. If the re-sniff returns the same hash that just got rejected, or
+   nothing at all → the badge shows a clear error and we stop trying
 
-**Manual intervention only if both fail.** Symptoms: badge shows an
-error, or DevTools console for the listing tab logs an API error from
-`airbnb-api.ts`. Investigation:
+There is no hardcoded fallback — by design. Silent recovery to a stale
+path masks bugs; a loud error surfaces them within minutes.
 
-1. On the listing page DevTools console, run:
+**Manual intervention** when the badge shows
+`Couldn't read API key and persisted-query hash from the Airbnb page
+bundle` or `Airbnb persisted-query hash has rotated`:
+
+1. Open a listing, DevTools → Console:
    ```js
    document.querySelectorAll('script').length
    ```
-   If 0 or very low, the bundle didn't load — sniff has nothing to find.
-2. Find the actual values yourself:
-   - DevTools → Network tab → filter `StaysPdpReviewsQuery`
-   - The 64-char hex in the request URL is the new hash
-   - The `X-Airbnb-API-Key` header is the new key
-3. If the live values are present on the page but our regex didn't find
-   them, the bundle structure changed. Update the patterns in
-   `extension/src/airbnb-api.ts`:
-   - `API_KEY_PATTERN` matches `"api_config":{"key":"..."}`
-   - `REVIEWS_HASH_PATTERN` matches `StaysPdpReviewsQuery`...`sha256Hash`
-4. As a last resort, update `FALLBACK_API_KEY` and
-   `FALLBACK_REVIEWS_QUERY_HASH` so the fallback path works while you fix
-   the sniff.
+   If 0 or very low, the bundle didn't load — try a hard refresh.
+2. Find the new values yourself:
+   - DevTools → Network → filter `StaysPdpReviewsQuery`
+   - The 64-char hex in the request URL is the current hash
+   - The `X-Airbnb-API-Key` header is the current key
+3. Confirm whether our regexes can find them on the page. In the same
+   DevTools console:
+   ```js
+   document.documentElement.outerHTML.match(/"api_config"\s*:\s*\{\s*"key"\s*:\s*"([a-zA-Z0-9_-]{16,64})"/)
+   document.documentElement.outerHTML.match(/StaysPdpReviewsQuery[\s\S]{0,200}?"sha256Hash"\s*:\s*"([a-f0-9]{64})"/)
+   ```
+   If either returns null, the bundle structure changed — update the
+   matchers in `extension/src/airbnb-api.ts`:
+   - `API_KEY_PATTERN`
+   - `REVIEWS_HASH_PATTERN` / `REVIEWS_HASH_PATTERN_REVERSED`
+4. Rebuild and reload the extension.
 
 ### 5.2 Airbnb rotated the public API key
 
-Same flow as 5.1 — the runtime sniff handles it automatically. Manual
-intervention is only needed if the sniff regex misses the new shape, in
-which case update `API_KEY_PATTERN` in `airbnb-api.ts`.
+Same flow as 5.1 — runtime sniff handles it automatically. Manual fix
+needed only if the regex misses the new shape; update `API_KEY_PATTERN`
+in `airbnb-api.ts`.
 
 (The key has been `d306zoyjsyarp7ifhu67rjxn52tv0t20` for years, so this
 is unlikely.)
