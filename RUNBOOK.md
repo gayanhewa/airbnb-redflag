@@ -188,28 +188,45 @@ chrome.storage.local.clear();
 
 ### 5.1 Airbnb rotated the persisted-query hash
 
-Symptom: API call returns
-`{"error_code":400,"error_type":"persisted_query_not_found"}`. The
-extension auto-falls-back to DOM scraping (slow, brittle), but the fix is
-to update the hash.
+The extension is supposed to handle this automatically:
 
-How to find the new hash:
+1. The first request after a rotation returns
+   `{"error_code":400,"error_type":"persisted_query_not_found"}`
+2. The extension drops its cached credentials, re-sniffs the page bundle
+   for the new hash + key, and retries the request once
+3. If the new credentials work → silent recovery, user sees nothing
+4. If the new credentials still fail → falls back to DOM scraping
 
-1. Open an Airbnb listing
-2. DevTools → Network tab → filter for `StaysPdpReviewsQuery`
-3. Click the request → Headers → "Request URL"
-4. The 64-char hex string after `/api/v3/StaysPdpReviewsQuery/` is the new
-   hash. It also appears in the `extensions` query param as `sha256Hash`
-5. Update `DEFAULT_REVIEWS_QUERY_HASH` in `extension/src/airbnb-api.ts`
-6. Rebuild and reload the extension
+**Manual intervention only if both fail.** Symptoms: badge shows an
+error, or DevTools console for the listing tab logs an API error from
+`airbnb-api.ts`. Investigation:
+
+1. On the listing page DevTools console, run:
+   ```js
+   document.querySelectorAll('script').length
+   ```
+   If 0 or very low, the bundle didn't load — sniff has nothing to find.
+2. Find the actual values yourself:
+   - DevTools → Network tab → filter `StaysPdpReviewsQuery`
+   - The 64-char hex in the request URL is the new hash
+   - The `X-Airbnb-API-Key` header is the new key
+3. If the live values are present on the page but our regex didn't find
+   them, the bundle structure changed. Update the patterns in
+   `extension/src/airbnb-api.ts`:
+   - `API_KEY_PATTERN` matches `"api_config":{"key":"..."}`
+   - `REVIEWS_HASH_PATTERN` matches `StaysPdpReviewsQuery`...`sha256Hash`
+4. As a last resort, update `FALLBACK_API_KEY` and
+   `FALLBACK_REVIEWS_QUERY_HASH` so the fallback path works while you fix
+   the sniff.
 
 ### 5.2 Airbnb rotated the public API key
 
-Same procedure as 5.1 — the key is in the request's `X-Airbnb-API-Key`
-header. Update `DEFAULT_API_KEY` in `airbnb-api.ts`.
+Same flow as 5.1 — the runtime sniff handles it automatically. Manual
+intervention is only needed if the sniff regex misses the new shape, in
+which case update `API_KEY_PATTERN` in `airbnb-api.ts`.
 
-(The key has been `d306zoyjsyarp7ifhu67rjxn52tv0t20` for a long time, so
-this is unlikely.)
+(The key has been `d306zoyjsyarp7ifhu67rjxn52tv0t20` for years, so this
+is unlikely.)
 
 ### 5.3 Airbnb DOM changed and the fallback scraper broke
 
